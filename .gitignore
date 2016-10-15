@@ -1,0 +1,13 @@
+*.apk
+*.ap_
+*.dex
+*.iml
+*.class
+/local.properties
+Thumbs.db
+.DS_Store
+/.idea
+.gradle
+/build
+/captures
+/app/src/buildProd/res/xml/ga.xml
