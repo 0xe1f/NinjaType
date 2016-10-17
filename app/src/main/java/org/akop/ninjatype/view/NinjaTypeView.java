@@ -280,7 +280,7 @@ public class NinjaTypeView
 			Key key;
 			if ((key = mKeyboard.lookup(mPt.x, mPt.y)) != null
 					&& key != mPrevKey) {
-				handleLookups(key);
+//				handleLookups(key);
 				mPrevKey = key;
 			}
 
@@ -403,9 +403,9 @@ public class NinjaTypeView
 
 		Key lookup(float x, float y)
 		{
-			KeyRow row = find(mRows, 0, mRows.size(), y);
+			KeyRow row = find(mRows, 0, mRows.size() - 1, y);
 			if (row != null) {
-				return find(row.mKeys, 0, row.mKeys.size(), x);
+				return find(row.mKeys, 0, row.mKeys.size() - 1, x);
 			}
 
 			return null;
@@ -418,15 +418,11 @@ public class NinjaTypeView
 			}
 
 			int mid = (start + end) / 2;
-			T obj = null;
-
-			if (mid >= 0 && mid < list.size()) {
-				obj = list.get(mid);
-				if (v < obj.mStart) {
-					return find(list, start, mid - 1, v);
-				} else if (v >= obj.mEnd) {
-					return find(list, mid + 1, end, v);
-				}
+			T obj = list.get(mid);
+			if (v < obj.mStart) {
+				return find(list, start, mid - 1, v);
+			} else if (v >= obj.mEnd) {
+				return find(list, mid + 1, end, v);
 			}
 
 			return obj;
