@@ -75,7 +75,7 @@ public class NinjaTypeView
 	private final Paint mKeyOutlinePaint;
 	private final Paint mSwipyPaint;
 
-	private final KeyMatrix mKeyMatrix;
+	private final Keyboard mKeyboard;
 	private final Dictionary mDictionary;
 
 	public NinjaTypeView(Context context, AttributeSet attrs)
@@ -126,7 +126,7 @@ public class NinjaTypeView
 		mSwipyPaint.setStrokeWidth(swipeThickness);
 		mSwipyPaint.setStyle(Paint.Style.STROKE);
 
-		mKeyMatrix = new KeyMatrix();
+		mKeyboard = new Keyboard();
 		mDictionary = new Dictionary();
 
 		readDict();
@@ -218,11 +218,13 @@ public class NinjaTypeView
 		float minKeyWidth = mKeyboardRect.width() / mostKeysPerRow;
 		RectF keyRect = new RectF(0, 0, minKeyWidth, mKeyHeight);
 
-		mKeyMatrix.reset();
+		mKeyboard.clear();
 
 		for (String[] row: KEYS) {
 			float rowWidth = minKeyWidth * row.length;
 			keyRect.offsetTo(mKeyboardRect.centerX() - rowWidth / 2, keyRect.top);
+
+			KeyRow keyRow = mKeyboard.add(new KeyRow(keyRect.top, keyRect.bottom));
 			for (String keyLabel: row) {
 				float labelWidth = mLabelPaint.measureText(keyLabel);
 
@@ -230,7 +232,8 @@ public class NinjaTypeView
 				keyboardCanvas.drawText(keyLabel, keyRect.centerX() - labelWidth / 2,
 						keyRect.bottom - mKeyVpadding, mLabelPaint);
 
-				mKeyMatrix.add(keyLabel.charAt(0) /* FIXME */, keyLabel, keyRect);
+				keyRow.add(new Key(keyRect.left, keyRect.right,
+						keyLabel.charAt(0) /* FIXME */, keyLabel));
 
 				keyRect.offset(minKeyWidth, 0);
 			}
@@ -275,7 +278,7 @@ public class NinjaTypeView
 			mPt.set(x, y);
 
 			Key key;
-			if ((key = mKeyMatrix.lookup(mPt.x, mPt.y)) != null
+			if ((key = mKeyboard.lookup(mPt.x, mPt.y)) != null
 					&& key != mPrevKey) {
 				handleLookups(key);
 				mPrevKey = key;
@@ -327,17 +330,30 @@ public class NinjaTypeView
 		}
 	}
 
+	private static abstract class KeyObj
+	{
+		final float mStart;
+		final float mEnd;
+
+		KeyObj(float start, float end)
+		{
+			mStart = start;
+			mEnd = end;
+		}
+	}
+
 	private static class Key
+			extends KeyObj
 	{
 		char mChar;
 		String mLabel;
-		RectF mRect;
 
-		Key(char ch, String label, RectF rect)
+		Key(float start, float end, char ch, String label)
 		{
+			super(start, end);
+
 			mChar = ch;
 			mLabel = label;
-			mRect = new RectF(rect);
 		}
 
 		@Override
@@ -347,35 +363,73 @@ public class NinjaTypeView
 		}
 	}
 
-	private static class KeyMatrix
+	private static class KeyRow
+			extends KeyObj
 	{
 		final List<Key> mKeys;
 
-		KeyMatrix()
+		KeyRow(float start, float end)
 		{
+			super(start, end);
+
 			mKeys = new ArrayList<>();
 		}
 
-		void reset()
+		void add(Key key)
 		{
-			mKeys.clear();
+			mKeys.add(key);
+		}
+	}
+
+	private static class Keyboard
+	{
+		final List<KeyRow> mRows;
+
+		Keyboard()
+		{
+			mRows = new ArrayList<>();
 		}
 
-		void add(char ch, String label, RectF rect)
+		void clear()
 		{
-			mKeys.add(new Key(ch, label, rect));
+			mRows.clear();
+		}
+
+		KeyRow add(KeyRow row)
+		{
+			mRows.add(row);
+			return row;
 		}
 
 		Key lookup(float x, float y)
 		{
-			// FIXME runtime
-			for (Key key: mKeys) {
-				if (key.mRect.contains(x, y)) {
-					return key;
-				}
+			KeyRow row = find(mRows, 0, mRows.size(), y);
+			if (row != null) {
+				return find(row.mKeys, 0, row.mKeys.size(), x);
 			}
 
 			return null;
+		}
+
+		static <T extends KeyObj> T find(List<T> list, int start, int end, float v)
+		{
+			if (start > end) {
+				return null;
+			}
+
+			int mid = (start + end) / 2;
+			T obj = null;
+
+			if (mid >= 0 && mid < list.size()) {
+				obj = list.get(mid);
+				if (v < obj.mStart) {
+					return find(list, start, mid - 1, v);
+				} else if (v >= obj.mEnd) {
+					return find(list, mid + 1, end, v);
+				}
+			}
+
+			return obj;
 		}
 	}
 }
