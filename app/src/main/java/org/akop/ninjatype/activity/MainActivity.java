@@ -16,17 +16,102 @@ package org.akop.ninjatype.activity;
 
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.BaseAdapter;
+import android.widget.ListView;
+import android.widget.TextView;
 
 import org.akop.ninjatype.R;
+import org.akop.ninjatype.view.NinjaTypeView;
+
+import java.util.ArrayList;
+import java.util.List;
 
 
 public class MainActivity
 		extends AppCompatActivity
+		implements NinjaTypeView.OnWordSwipedListener
 {
+	private static final String LOG_TAG = MainActivity.class.getSimpleName();
+
+	private final Adapter mAdapter = new Adapter();
+
 	@Override
 	protected void onCreate(Bundle savedInstanceState)
 	{
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
+
+		NinjaTypeView ntv = (NinjaTypeView) findViewById(R.id.ninja_type);
+		ListView lv = (ListView) findViewById(R.id.list_view);
+
+		ntv.setOnWordSwipedListener(this);
+
+		lv.setAdapter(mAdapter);
+	}
+
+	@Override
+	public void onWordSwiped(List<String> candidates)
+	{
+		mAdapter.reset(candidates);
+	}
+
+	@Override
+	public void onNoMatches()
+	{
+		mAdapter.clear();
+	}
+
+	private class Adapter
+			extends BaseAdapter
+	{
+		final List<String> mStrings = new ArrayList<>();
+
+		void reset(List<String> strings)
+		{
+			mStrings.clear();
+			mStrings.addAll(strings);
+			notifyDataSetChanged();
+		}
+
+		void clear()
+		{
+			mStrings.clear();
+			notifyDataSetChanged();
+		}
+
+		@Override
+		public int getCount()
+		{
+			return mStrings.size();
+		}
+
+		@Override
+		public String getItem(int position)
+		{
+			return mStrings.get(position);
+		}
+
+		@Override
+		public long getItemId(int position)
+		{
+			return position;
+		}
+
+		@Override
+		public View getView(int position, View convertView, ViewGroup parent)
+		{
+			if (convertView == null) {
+				LayoutInflater li = getLayoutInflater();
+				convertView = li.inflate(R.layout.template_option, parent, false);
+			}
+
+			TextView tv = (TextView) convertView;
+			tv.setText(mStrings.get(position));
+
+			return convertView;
+		}
 	}
 }

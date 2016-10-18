@@ -27,25 +27,36 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.support.annotation.NonNull;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.TextView;
 
 import org.akop.ninjatype.R;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 
 public class NinjaTypeView
 		extends TextView
 {
 	private static final String LOG_TAG = NinjaTypeView.class.getSimpleName();
+
+	public interface OnWordSwipedListener
+	{
+		void onWordSwiped(List<String> candidates);
+		void onNoMatches();
+	}
+
+	private static final int MAX_CANDIDATES = 5;
 
 	private static final String[][] KEYS = new String[][] {
 			{ "Q","W","E","R","T","Y","U","I","O","P" },
@@ -78,6 +89,20 @@ public class NinjaTypeView
 	private final Keyboard mKeyboard;
 	private final Dictionary mDictionary;
 
+	private static final Comparator<String> BY_LENGTH_COMPARATOR
+			= new Comparator<String>()
+	{
+		@Override
+		public int compare(String o1, String o2)
+		{
+			int l1 = o1.length();
+			int l2 = o2.length();
+			return l1 < l2 ? 1 : (l1 == l2 ? 0 : -1);
+		}
+	};
+
+	private OnWordSwipedListener mOnWordSwipedListener;
+
 	public NinjaTypeView(Context context, AttributeSet attrs)
 	{
 		super(context, attrs);
@@ -97,6 +122,7 @@ public class NinjaTypeView
 		mKeyVpadding = KEY_VPADDING * dm.density;
 		int swipeColor = SWIPE_COLOR;
 		float swipeThickness = SWIPE_THICKNESS * dm.density;
+		int dictionaryResId = R.raw.default_dictionary;
 
 		if (attrs != null) {
 			Resources.Theme theme = context.getTheme();
@@ -108,6 +134,7 @@ public class NinjaTypeView
 			mKeyVpadding = a.getDimensionPixelSize(R.styleable.NinjaTypeView_keyVerticalPadding, (int) mKeyVpadding);
 			swipeColor = a.getColor(R.styleable.NinjaTypeView_swipeColor, swipeColor);
 			swipeThickness = a.getDimensionPixelSize(R.styleable.NinjaTypeView_swipeThickness, (int) swipeThickness);
+			dictionaryResId = a.getResourceId(R.styleable.NinjaTypeView_dictionary, dictionaryResId);
 
 			a.recycle();
 		}
@@ -129,7 +156,34 @@ public class NinjaTypeView
 		mKeyboard = new Keyboard();
 		mDictionary = new Dictionary();
 
-		readDict();
+		if (dictionaryResId != 0) {
+			mDictionary.readFromResource(getContext(), dictionaryResId);
+		}
+	}
+
+	@Override
+	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec)
+	{
+		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+
+		int desiredHeight = (int) keyHeight() * KEYS.length;
+
+		int height;
+		switch (MeasureSpec.getMode(heightMeasureSpec)) {
+		case MeasureSpec.EXACTLY:
+			height = MeasureSpec.getSize(heightMeasureSpec);
+			break;
+		case MeasureSpec.AT_MOST:
+			height = Math.min(desiredHeight,
+					MeasureSpec.getSize(heightMeasureSpec));
+			break;
+		case MeasureSpec.UNSPECIFIED:
+		default:
+			height = desiredHeight;
+			break;
+		}
+
+		setMeasuredDimension(widthMeasureSpec, height);
 	}
 
 	@Override
@@ -166,28 +220,20 @@ public class NinjaTypeView
 		canvas.restore();
 	}
 
-	// FIXME: decrapify
-	private void readDict()
+	public void setOnWordSwipedListener(OnWordSwipedListener l)
 	{
-		Resources res = getResources();
-		InputStream resStream = res.openRawResource(R.raw.roget);
+		mOnWordSwipedListener = l;
+	}
 
-		try {
-			mDictionary.scanFile(resStream);
-		} catch (IOException e) {
-			// FIXME
-			throw new RuntimeException(e);
-		} finally {
-			try { resStream.close(); }
-			catch (IOException e) { /* */ }
-		}
+	private float keyHeight()
+	{
+		mLabelPaint.getTextBounds("Q" /* FIXME */, 0, 1, mTempRect);
+		return mKeyVpadding * 2 + mTempRect.height();
 	}
 
 	private void femputeKeyboardRect()
 	{
-		mLabelPaint.getTextBounds("Q" /* FIXME */, 0, 1, mTempRect);
-
-		mKeyHeight = mKeyVpadding * 2 + mTempRect.height();
+		mKeyHeight = keyHeight();
 		mKeyboardRect.set(0, 0, mContentRect.width(), KEYS.length * mKeyHeight);
 	}
 
@@ -224,7 +270,7 @@ public class NinjaTypeView
 			float rowWidth = minKeyWidth * row.length;
 			keyRect.offsetTo(mKeyboardRect.centerX() - rowWidth / 2, keyRect.top);
 
-			KeyRow keyRow = mKeyboard.add(new KeyRow(keyRect.top, keyRect.bottom));
+			Keyboard.Row keyRow = mKeyboard.add(new Keyboard.Row(keyRect.top, keyRect.bottom));
 			for (String keyLabel: row) {
 				float labelWidth = mLabelPaint.measureText(keyLabel);
 
@@ -232,7 +278,7 @@ public class NinjaTypeView
 				keyboardCanvas.drawText(keyLabel, keyRect.centerX() - labelWidth / 2,
 						keyRect.bottom - mKeyVpadding, mLabelPaint);
 
-				keyRow.add(new Key(keyRect.left, keyRect.right,
+				keyRow.add(new Keyboard.Key(keyRect.left, keyRect.right,
 						keyLabel.charAt(0) /* FIXME */, keyLabel));
 
 				keyRect.offset(minKeyWidth, 0);
@@ -251,25 +297,52 @@ public class NinjaTypeView
 		mSwipyDrawable.setBounds(mKeyboardBounds);
 	}
 
+	private static class Match
+			implements Comparable<Match>
+	{
+		final Dictionary.INode mNode;
+		final String mWord;
+		float mDistance;
+
+		Match(Dictionary.INode node, String str)
+		{
+			mNode = node;
+			mWord = str;
+		}
+
+		@Override
+		public String toString()
+		{
+			return mWord;
+		}
+
+		@Override
+		public int compareTo(@NonNull Match o)
+		{
+			return o.mWord.compareTo(mWord);
+		}
+	}
+
 	private class TouchHandler
 			implements OnTouchListener
 	{
 		final PointF mPt;
 		final PointF mPrevPt;
-		Key mPrevKey;
-		Dictionary.INode mNode;
+		final Set<Match> mMatches;
+		Keyboard.Key mPrevKey;
 
 		TouchHandler()
 		{
 			mPt = new PointF();
 			mPrevPt = new PointF();
+			mMatches = new TreeSet<>();
 		}
 
 		void initSwipe(float x, float y)
 		{
 			mPrevKey = null;
 			mPt.set(x, y);
-			mNode = mDictionary.mRoot;
+			mMatches.clear();
 		}
 
 		void swipeChanged(float x, float y)
@@ -277,11 +350,12 @@ public class NinjaTypeView
 			mPrevPt.set(mPt);
 			mPt.set(x, y);
 
-			Key key;
-			if ((key = mKeyboard.lookup(mPt.x, mPt.y)) != null
-					&& key != mPrevKey) {
-//				handleLookups(key);
-				mPrevKey = key;
+			Keyboard.Key key;
+			if ((key = mKeyboard.keyAt(x, y)) != null) {
+				if (key != mPrevKey) {
+					keyChanged(key);
+					mPrevKey = key;
+				}
 			}
 
 			mSwipyCanvas.drawLine(mPrevPt.x, mPrevPt.y,
@@ -291,19 +365,50 @@ public class NinjaTypeView
 		void endSwipe()
 		{
 			mSwipyCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-		}
 
-		void handleLookups(Key key)
-		{
-			if (mNode == null) {
-				return;
+			if (mOnWordSwipedListener != null) {
+				List<String> candidates = new ArrayList<>();
+				for (Match m: mMatches) {
+					if (m.mNode.mEnd) {
+						candidates.add(m.mWord);
+					}
+				}
+
+				if (!candidates.isEmpty()) {
+					Collections.sort(candidates, BY_LENGTH_COMPARATOR);
+					mOnWordSwipedListener.onWordSwiped(candidates.subList(0,
+							Math.min(candidates.size(), MAX_CANDIDATES)));
+				} else {
+					mOnWordSwipedListener.onNoMatches();
+				}
 			}
 
-			// FIXME
-			Dictionary.INode next = mNode.next(key.mChar);
-			if (next != null) {
-				Log.v(LOG_TAG, "* " + key.mChar);
-				mNode = next;
+			mMatches.clear();
+		}
+
+		void keyChanged(Keyboard.Key key)
+		{
+			if (mMatches.isEmpty()) {
+				addCandidates(mMatches, mDictionary.mRoot, "", key.mChar);
+			} else {
+				Set<Match> newMatches = new TreeSet<>();
+				for (Match m: mMatches) {
+					addCandidates(newMatches, m.mNode, m.mWord, key.mChar);
+				}
+				mMatches.addAll(newMatches);
+			}
+		}
+
+		void addCandidates(Collection<Match> list,
+				Dictionary.INode current, String prefix, char ch)
+		{
+			Dictionary.INode next;
+			while ((next = current.next(ch)) != null) {
+				Match nm = new Match(next, prefix + ch);
+				list.add(nm);
+
+				current = next;
+				prefix = nm.mWord;
 			}
 		}
 
@@ -327,105 +432,6 @@ public class NinjaTypeView
 			invalidate();
 
 			return true;
-		}
-	}
-
-	private static abstract class KeyObj
-	{
-		final float mStart;
-		final float mEnd;
-
-		KeyObj(float start, float end)
-		{
-			mStart = start;
-			mEnd = end;
-		}
-	}
-
-	private static class Key
-			extends KeyObj
-	{
-		char mChar;
-		String mLabel;
-
-		Key(float start, float end, char ch, String label)
-		{
-			super(start, end);
-
-			mChar = ch;
-			mLabel = label;
-		}
-
-		@Override
-		public String toString()
-		{
-			return "[" + mLabel + "]";
-		}
-	}
-
-	private static class KeyRow
-			extends KeyObj
-	{
-		final List<Key> mKeys;
-
-		KeyRow(float start, float end)
-		{
-			super(start, end);
-
-			mKeys = new ArrayList<>();
-		}
-
-		void add(Key key)
-		{
-			mKeys.add(key);
-		}
-	}
-
-	private static class Keyboard
-	{
-		final List<KeyRow> mRows;
-
-		Keyboard()
-		{
-			mRows = new ArrayList<>();
-		}
-
-		void clear()
-		{
-			mRows.clear();
-		}
-
-		KeyRow add(KeyRow row)
-		{
-			mRows.add(row);
-			return row;
-		}
-
-		Key lookup(float x, float y)
-		{
-			KeyRow row = find(mRows, 0, mRows.size() - 1, y);
-			if (row != null) {
-				return find(row.mKeys, 0, row.mKeys.size() - 1, x);
-			}
-
-			return null;
-		}
-
-		static <T extends KeyObj> T find(List<T> list, int start, int end, float v)
-		{
-			if (start > end) {
-				return null;
-			}
-
-			int mid = (start + end) / 2;
-			T obj = list.get(mid);
-			if (v < obj.mStart) {
-				return find(list, start, mid - 1, v);
-			} else if (v >= obj.mEnd) {
-				return find(list, mid + 1, end, v);
-			}
-
-			return obj;
 		}
 	}
 }

@@ -14,13 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 -->
-<resources>
-	<declare-styleable name="NinjaTypeView">
-		<attr name="labelColor" format="color" />
-		<attr name="labelSize" format="dimension" />
-		<attr name="keyVerticalPadding" format="dimension" />
-		<attr name="swipeColor" format="color" />
-		<attr name="swipeThickness" format="dimension" />
-		<attr name="dictionary" format="reference" />
-	</declare-styleable>
-</resources>
+<TextView
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:textSize="21sp"/>
