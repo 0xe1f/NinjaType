@@ -56,7 +56,7 @@ public class NinjaTypeView
 		void onNoMatches();
 	}
 
-	private static final int MAX_CANDIDATES = 5;
+	private static final int MAX_CANDIDATES = Integer.MAX_VALUE; //5;
 
 	private static final String[][] KEYS = new String[][] {
 			{ "Q","W","E","R","T","Y","U","I","O","P" },
@@ -328,14 +328,14 @@ public class NinjaTypeView
 	{
 		final PointF mPt;
 		final PointF mPrevPt;
-		final Set<Match> mMatches;
+		final List<Match> mMatches;
 		Keyboard.Key mPrevKey;
 
 		TouchHandler()
 		{
 			mPt = new PointF();
 			mPrevPt = new PointF();
-			mMatches = new TreeSet<>();
+			mMatches = new ArrayList<>();
 		}
 
 		void initSwipe(float x, float y)
@@ -389,23 +389,21 @@ public class NinjaTypeView
 		void keyChanged(Keyboard.Key key)
 		{
 			if (mMatches.isEmpty()) {
-				addCandidates(mMatches, mDictionary.mRoot, "", key.mChar);
+				addCandidates(mDictionary.mRoot, "", key.mChar);
 			} else {
-				Set<Match> newMatches = new TreeSet<>();
-				for (Match m: mMatches) {
-					addCandidates(newMatches, m.mNode, m.mWord, key.mChar);
+				for (int i = 0, n = mMatches.size(); i < n; i++) {
+					Match m = mMatches.get(i);
+					addCandidates(m.mNode, m.mWord, key.mChar);
 				}
-				mMatches.addAll(newMatches);
 			}
 		}
 
-		void addCandidates(Collection<Match> list,
-				Dictionary.INode current, String prefix, char ch)
+		void addCandidates(Dictionary.INode current, String prefix, char ch)
 		{
 			Dictionary.INode next;
 			while ((next = current.next(ch)) != null) {
 				Match nm = new Match(next, prefix + ch);
-				list.add(nm);
+				mMatches.add(nm);
 
 				current = next;
 				prefix = nm.mWord;
