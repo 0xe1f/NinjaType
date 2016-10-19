@@ -27,9 +27,9 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
-import android.support.annotation.NonNull;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.TextView;
@@ -37,12 +37,10 @@ import android.widget.TextView;
 import org.akop.ninjatype.R;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.Locale;
 
 
 public class NinjaTypeView
@@ -89,15 +87,13 @@ public class NinjaTypeView
 	private final Keyboard mKeyboard;
 	private final Dictionary mDictionary;
 
-	private static final Comparator<String> BY_LENGTH_COMPARATOR
-			= new Comparator<String>()
+	private static final Comparator<Match> BY_LENGTH_COMPARATOR
+			= new Comparator<Match>()
 	{
 		@Override
-		public int compare(String o1, String o2)
+		public int compare(Match o1, Match o2)
 		{
-			int l1 = o1.length();
-			int l2 = o2.length();
-			return l1 < l2 ? 1 : (l1 == l2 ? 0 : -1);
+			return Float.compare(o2.score(), o1.score());
 		}
 	};
 
@@ -298,28 +294,35 @@ public class NinjaTypeView
 	}
 
 	private static class Match
-			implements Comparable<Match>
 	{
 		final Dictionary.INode mNode;
 		final String mWord;
+		final int mKeyIndex;
+		final float mStartingScore;
 		float mDistance;
+		final int mHits;
 
-		Match(Dictionary.INode node, String str)
+		Match(Dictionary.INode node, String str, int keyIndex,
+				int hits, float startingScore)
 		{
+			mHits = hits;
 			mNode = node;
 			mWord = str;
+			mKeyIndex = keyIndex;
+			mStartingScore = startingScore;
+			mDistance = Float.MAX_VALUE;
+		}
+
+		float score()
+		{
+			return mStartingScore + (100f / (mDistance + 50f));
 		}
 
 		@Override
 		public String toString()
 		{
-			return mWord;
-		}
-
-		@Override
-		public int compareTo(@NonNull Match o)
-		{
-			return o.mWord.compareTo(mWord);
+			return String.format(Locale.getDefault(),
+					"%s (%.02f)", mWord, score());
 		}
 	}
 
@@ -329,6 +332,7 @@ public class NinjaTypeView
 		final PointF mPt;
 		final PointF mPrevPt;
 		final List<Match> mMatches;
+		int mKeyCounter;
 		Keyboard.Key mPrevKey;
 
 		TouchHandler()
@@ -340,6 +344,7 @@ public class NinjaTypeView
 
 		void initSwipe(float x, float y)
 		{
+			mKeyCounter = 0;
 			mPrevKey = null;
 			mPt.set(x, y);
 			mMatches.clear();
@@ -353,13 +358,14 @@ public class NinjaTypeView
 			Keyboard.Key key;
 			if ((key = mKeyboard.keyAt(x, y)) != null) {
 				if (key != mPrevKey) {
-					keyChanged(key);
+					keyChanged(key, ++mKeyCounter);
 					mPrevKey = key;
+				} else {
+					updateDistances(key.distanceFromCenter(x, y), mKeyCounter);
 				}
 			}
 
-			mSwipyCanvas.drawLine(mPrevPt.x, mPrevPt.y,
-					mPt.x, mPt.y, mSwipyPaint);
+			mSwipyCanvas.drawLine(mPrevPt.x, mPrevPt.y, x, y, mSwipyPaint);
 		}
 
 		void endSwipe()
@@ -367,15 +373,16 @@ public class NinjaTypeView
 			mSwipyCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
 
 			if (mOnWordSwipedListener != null) {
+				Collections.sort(mMatches, BY_LENGTH_COMPARATOR);
 				List<String> candidates = new ArrayList<>();
 				for (Match m: mMatches) {
 					if (m.mNode.mEnd) {
+						Log.v(LOG_TAG, m + "");
 						candidates.add(m.mWord);
 					}
 				}
 
 				if (!candidates.isEmpty()) {
-					Collections.sort(candidates, BY_LENGTH_COMPARATOR);
 					mOnWordSwipedListener.onWordSwiped(candidates.subList(0,
 							Math.min(candidates.size(), MAX_CANDIDATES)));
 				} else {
@@ -386,23 +393,53 @@ public class NinjaTypeView
 			mMatches.clear();
 		}
 
-		void keyChanged(Keyboard.Key key)
+		void updateDistances(float distance, int keyIndex)
 		{
-			if (mMatches.isEmpty()) {
-				addCandidates(mDictionary.mRoot, "", key.mChar);
-			} else {
-				for (int i = 0, n = mMatches.size(); i < n; i++) {
-					Match m = mMatches.get(i);
-					addCandidates(m.mNode, m.mWord, key.mChar);
+			for (Match m: mMatches) {
+				if (m.mKeyIndex == keyIndex) {
+					if (m.mDistance > distance) {
+						m.mDistance = distance;
+					} else {
+						break; // FIXME?
+					}
 				}
 			}
 		}
 
-		void addCandidates(Dictionary.INode current, String prefix, char ch)
+		void keyChanged(Keyboard.Key key, int keyIndex)
 		{
+			if (mMatches.isEmpty()) {
+				addCandidates(null, key.mChar, keyIndex);
+			} else {
+				for (int i = 0, n = mMatches.size(); i < n; i++) {
+					Match m = mMatches.get(i);
+					addCandidates(m, key.mChar, keyIndex);
+				}
+			}
+		}
+
+		void addCandidates(Match match, char ch, int keyIndex)
+		{
+			Dictionary.INode current;
+			String prefix;
+			final int hits;
+			final float score;
+
+			if (match == null) {
+				current = mDictionary.mRoot;
+				prefix = "";
+				hits = 1;
+				score = 0;
+			} else {
+				current = match.mNode;
+				prefix = match.mWord;
+				hits = match.mHits + 1;
+				score = match.score();
+			}
+
 			Dictionary.INode next;
 			while ((next = current.next(ch)) != null) {
-				Match nm = new Match(next, prefix + ch);
+				Match nm = new Match(next, prefix + ch, keyIndex, hits, score);
 				mMatches.add(nm);
 
 				current = next;
