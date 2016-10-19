@@ -39,8 +39,10 @@ import org.akop.ninjatype.R;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 
 public class NinjaTypeView
@@ -54,7 +56,7 @@ public class NinjaTypeView
 		void onNoMatches();
 	}
 
-	private static final int MAX_CANDIDATES = Integer.MAX_VALUE; //5;
+	private static final int MAX_CANDIDATES = 10;
 
 	private static final String[][] KEYS = new String[][] {
 			{ "Q","W","E","R","T","Y","U","I","O","P" },
@@ -76,6 +78,7 @@ public class NinjaTypeView
 	private final Rect mKeyboardBounds;
 	private float mKeyVpadding;
 	private float mKeyHeight;
+	private int mLongestKeySpan;
 	private Drawable mKeyboardDrawable;
 	private Drawable mSwipyDrawable;
 	private Canvas mSwipyCanvas;
@@ -155,6 +158,8 @@ public class NinjaTypeView
 		if (dictionaryResId != 0) {
 			mDictionary.readFromResource(getContext(), dictionaryResId);
 		}
+
+		initKeyboard();
 	}
 
 	@Override
@@ -231,6 +236,18 @@ public class NinjaTypeView
 	{
 		mKeyHeight = keyHeight();
 		mKeyboardRect.set(0, 0, mContentRect.width(), KEYS.length * mKeyHeight);
+	}
+
+	private void initKeyboard()
+	{
+		// This isn't entirely accurate - just assume that the longest span is
+		// a straight horizontal one
+		mLongestKeySpan = KEYS[0].length;
+		for (int i = 1; i < KEYS.length; i++) {
+			if (KEYS[i].length > mLongestKeySpan) {
+				mLongestKeySpan = KEYS[i].length;
+			}
+		}
 	}
 
 	private void prepareBitmaps(Resources res)
@@ -332,6 +349,7 @@ public class NinjaTypeView
 		final PointF mPt;
 		final PointF mPrevPt;
 		final List<Match> mMatches;
+		final Set<String> mCandidates;
 		int mKeyCounter;
 		Keyboard.Key mPrevKey;
 
@@ -340,6 +358,7 @@ public class NinjaTypeView
 			mPt = new PointF();
 			mPrevPt = new PointF();
 			mMatches = new ArrayList<>();
+			mCandidates = new HashSet<>();
 		}
 
 		void initSwipe(float x, float y)
@@ -348,6 +367,7 @@ public class NinjaTypeView
 			mPrevKey = null;
 			mPt.set(x, y);
 			mMatches.clear();
+			mCandidates.clear();
 		}
 
 		void swipeChanged(float x, float y)
@@ -390,6 +410,9 @@ public class NinjaTypeView
 				}
 			}
 
+			Log.v(LOG_TAG, mMatches.size() + " candidates");
+
+			mCandidates.clear();
 			mMatches.clear();
 		}
 
@@ -411,8 +434,12 @@ public class NinjaTypeView
 			if (mMatches.isEmpty()) {
 				addCandidates(null, key.mChar, keyIndex);
 			} else {
-				for (int i = 0, n = mMatches.size(); i < n; i++) {
+				for (int i = mMatches.size() - 1; i >= 0; i--) {
 					Match m = mMatches.get(i);
+					if (keyIndex - m.mKeyIndex > mLongestKeySpan) {
+						// Don't go too far back
+						break;
+					}
 					addCandidates(m, key.mChar, keyIndex);
 				}
 			}
@@ -439,11 +466,14 @@ public class NinjaTypeView
 
 			Dictionary.INode next;
 			while ((next = current.next(ch)) != null) {
-				Match nm = new Match(next, prefix + ch, keyIndex, hits, score);
-				mMatches.add(nm);
+				String word = prefix + ch;
+				if (!mCandidates.contains(word)) {
+					mMatches.add(new Match(next, word, keyIndex, hits, score));
+					mCandidates.add(word);
+				}
 
 				current = next;
-				prefix = nm.mWord;
+				prefix = word;
 			}
 		}
 
