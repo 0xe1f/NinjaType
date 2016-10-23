@@ -1,6 +1,6 @@
 # NinjaType
 
-*[NinjaType](src/main/java/org/akop/ninjatype/view/NinjaTypeView.java)*
+*[NinjaType](app/src/main/java/org/akop/ninjatype/view/NinjaTypeView.java)*
 is an experimental view I wrote - mostly to see how difficult it would be
 to implement a Swype-like keyboard from scratch.
 
