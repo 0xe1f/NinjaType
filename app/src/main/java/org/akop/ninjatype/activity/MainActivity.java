@@ -24,6 +24,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 
 import org.akop.ninjatype.R;
+import org.akop.ninjatype.view.Dictionary;
 import org.akop.ninjatype.view.NinjaTypeView;
 
 import java.util.ArrayList;
@@ -32,11 +33,14 @@ import java.util.List;
 
 public class MainActivity
 		extends AppCompatActivity
-		implements NinjaTypeView.OnWordSwipedListener
+		implements NinjaTypeView.OnWordSwipedListener,
+		Dictionary.OnStatusChangeListener
 {
 	private static final String LOG_TAG = MainActivity.class.getSimpleName();
 
 	private final Adapter mAdapter = new Adapter();
+
+	private TextView mStatus;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState)
@@ -46,8 +50,10 @@ public class MainActivity
 
 		NinjaTypeView ntv = (NinjaTypeView) findViewById(R.id.ninja_type);
 		ListView lv = (ListView) findViewById(R.id.list_view);
+		mStatus = (TextView) findViewById(R.id.status);
 
 		ntv.setOnWordSwipedListener(this);
+		ntv.setDictionaryStatusListener(this);
 
 		lv.setAdapter(mAdapter);
 	}
@@ -62,6 +68,19 @@ public class MainActivity
 	public void onNoMatches()
 	{
 		mAdapter.clear();
+	}
+
+	@Override
+	public void onDictionaryLoading()
+	{
+	}
+
+	@Override
+	public void onDictionaryReady()
+	{
+		if (mStatus != null) {
+			mStatus.setText(R.string.ready);
+		}
 	}
 
 	private class Adapter

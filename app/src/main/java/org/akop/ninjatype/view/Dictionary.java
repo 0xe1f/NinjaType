@@ -16,6 +16,7 @@ package org.akop.ninjatype.view;
 
 import android.content.Context;
 import android.content.res.Resources;
+import android.os.Handler;
 import android.os.SystemClock;
 import android.util.Log;
 
@@ -27,13 +28,20 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-class Dictionary
+public class Dictionary
 {
 	private static final String LOG_TAG = Dictionary.class.getSimpleName();
+
+	public interface OnStatusChangeListener
+	{
+		void onDictionaryLoading();
+		void onDictionaryReady();
+	}
 
 	private static final INode STUB_NODE = new INode();
 
 	INode mRoot;
+	OnStatusChangeListener mOnStatusChangeListener;
 
 	Dictionary()
 	{
@@ -43,6 +51,11 @@ class Dictionary
 	void readFromResource(final Context context, final int resourceId)
 	{
 		final long started = SystemClock.uptimeMillis();
+		final Handler handler = new Handler();
+
+		if (mOnStatusChangeListener != null) {
+			mOnStatusChangeListener.onDictionaryLoading();
+		}
 
 		new Thread(new Runnable()
 		{
@@ -65,6 +78,17 @@ class Dictionary
 
 				if (newRoot != null) {
 					mRoot = newRoot;
+
+					if (mOnStatusChangeListener != null) {
+						handler.post(new Runnable()
+						{
+							@Override
+							public void run()
+							{
+								mOnStatusChangeListener.onDictionaryReady();
+							}
+						});
+					}
 					Log.v(LOG_TAG, String.format("Loaded dictionary in %.02fs",
 							(SystemClock.uptimeMillis() - started) / 1000f));
 				}
@@ -102,11 +126,15 @@ class Dictionary
 
 	static class INode
 	{
-		final Map<Character, INode> mNodes = new HashMap<>();
-		boolean mEnd;
+		private Map<Character, INode> mNodes = null;
+		private boolean mEnd;
 
 		private INode appendINode(char ch)
 		{
+			if (mNodes == null) {
+				mNodes = new HashMap<>();
+			}
+
 			ch = Character.toUpperCase(ch);
 
 			INode in = mNodes.get(ch);
@@ -119,7 +147,13 @@ class Dictionary
 
 		INode next(char ch)
 		{
-			return mNodes.get(Character.toUpperCase(ch));
+			return (mNodes == null)
+					? null : mNodes.get(Character.toUpperCase(ch));
+		}
+
+		boolean terminal()
+		{
+			return mEnd;
 		}
 	}
 }

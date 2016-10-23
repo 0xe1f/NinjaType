@@ -64,7 +64,7 @@ public class NinjaTypeView
 			{ "Z","X","C","V","B","N","M" },
 	};
 
-	private static final int OUTLINE_COLOR = Color.parseColor("#777777");
+	private static final int OUTLINE_COLOR = Color.parseColor("#00000000");
 	private static final float OUTLINE_THICKNESS = 0;
 	private static final int LABEL_COLOR = Color.parseColor("#000000");
 	private static final float LABEL_SIZE = 20;
@@ -90,7 +90,7 @@ public class NinjaTypeView
 	private final Keyboard mKeyboard;
 	private final Dictionary mDictionary;
 
-	private static final Comparator<Match> BY_LENGTH_COMPARATOR
+	private static final Comparator<Match> SCORE_COMPARATOR
 			= new Comparator<Match>()
 	{
 		@Override
@@ -122,6 +122,8 @@ public class NinjaTypeView
 		int swipeColor = SWIPE_COLOR;
 		float swipeThickness = SWIPE_THICKNESS * dm.density;
 		int dictionaryResId = R.raw.default_dictionary;
+		int outlineColor = OUTLINE_COLOR;
+		float outlineThickness = OUTLINE_THICKNESS * dm.density;
 
 		if (attrs != null) {
 			Resources.Theme theme = context.getTheme();
@@ -134,6 +136,8 @@ public class NinjaTypeView
 			swipeColor = a.getColor(R.styleable.NinjaTypeView_swipeColor, swipeColor);
 			swipeThickness = a.getDimensionPixelSize(R.styleable.NinjaTypeView_swipeThickness, (int) swipeThickness);
 			dictionaryResId = a.getResourceId(R.styleable.NinjaTypeView_dictionary, dictionaryResId);
+			outlineColor = a.getColor(R.styleable.NinjaTypeView_outlineColor, outlineColor);
+			outlineThickness = a.getDimensionPixelSize(R.styleable.NinjaTypeView_outlineThickness, (int) outlineThickness);
 
 			a.recycle();
 		}
@@ -143,8 +147,8 @@ public class NinjaTypeView
 		mLabelPaint.setColor(labelColor);
 
 		mKeyOutlinePaint = new Paint();
-		mKeyOutlinePaint.setColor(OUTLINE_COLOR);
-		mKeyOutlinePaint.setStrokeWidth(OUTLINE_THICKNESS * dm.density);
+		mKeyOutlinePaint.setColor(outlineColor);
+		mKeyOutlinePaint.setStrokeWidth(outlineThickness);
 		mKeyOutlinePaint.setStyle(Paint.Style.STROKE);
 
 		mSwipyPaint = new Paint();
@@ -219,6 +223,11 @@ public class NinjaTypeView
 		}
 
 		canvas.restore();
+	}
+
+	public void setDictionaryStatusListener(Dictionary.OnStatusChangeListener l)
+	{
+		mDictionary.mOnStatusChangeListener = l;
 	}
 
 	public void setOnWordSwipedListener(OnWordSwipedListener l)
@@ -393,10 +402,10 @@ public class NinjaTypeView
 			mSwipyCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
 
 			if (mOnWordSwipedListener != null) {
-				Collections.sort(mMatches, BY_LENGTH_COMPARATOR);
+				Collections.sort(mMatches, SCORE_COMPARATOR);
 				List<String> candidates = new ArrayList<>();
 				for (Match m: mMatches) {
-					if (m.mNode.mEnd) {
+					if (m.mNode.terminal()) {
 						Log.v(LOG_TAG, m + "");
 						candidates.add(m.mWord);
 					}

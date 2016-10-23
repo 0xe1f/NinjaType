@@ -16,4 +16,6 @@
 -->
 <resources>
 	<string name="app_name">NinjaType</string>
+	<string name="loading_dictionary">Loading dictionary…</string>
+	<string name="ready">Ready</string>
 </resources>
